@@ -1,0 +1,26 @@
+{
+  "name": "qa-recorder-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for recording and querying QA sessions",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "qa-recorder-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "better-sqlite3": "^12.6.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.3.2",
+    "typescript": "^5.9.3"
+  }
+}
