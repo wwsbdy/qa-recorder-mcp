@@ -68,8 +68,87 @@ export function hasRecords(): boolean {
   }
 }
 
+export function deleteRecord(id: number): boolean {
+  const db = getDb();
+  try {
+    const result = db.prepare("DELETE FROM qa_records WHERE id = ?").run(id);
+    return result.changes > 0;
+  } finally {
+    db.close();
+  }
+}
+
+export function updateRecord(id: number, fields: Partial<Omit<QaRecord, "id" | "created_at">>): QaRecord | null {
+  const db = getDb();
+  try {
+    const sets: string[] = [];
+    const values: string[] = [];
+    for (const [key, val] of Object.entries(fields)) {
+      if (val !== undefined) {
+        sets.push(`${key} = ?`);
+        values.push(val);
+      }
+    }
+    if (sets.length === 0) return null;
+    values.push(String(id));
+    db.prepare(`UPDATE qa_records SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+    return db.prepare("SELECT * FROM qa_records WHERE id = ?").get(id) as QaRecord | null;
+  } finally {
+    db.close();
+  }
+}
+
+export function searchRecords(keyword: string, categories?: string[]): QaRecord[] {
+  const db = getDb();
+  try {
+    let sql = "SELECT * FROM qa_records WHERE (question LIKE ? OR solution LIKE ? OR scene LIKE ?)";
+    const bindings: string[] = [`%${keyword}%`, `%${keyword}%`, `%${keyword}%`];
+    if (categories && categories.length > 0) {
+      sql += ` AND category IN (${categories.map(() => "?").join(", ")})`;
+      bindings.push(...categories);
+    }
+    sql += " ORDER BY created_at DESC";
+    return db.prepare(sql).all(...bindings) as QaRecord[];
+  } finally {
+    db.close();
+  }
+}
+
+export function statsRecords(params?: {
+  type?: "this_week" | "last_week" | "this_month" | "last_month";
+  startDate?: string;
+  endDate?: string;
+  categories?: string[];
+}): { category: string; count: number }[] {
+  const db = getDb();
+  try {
+    let sql = "SELECT category, COUNT(*) as count FROM qa_records WHERE 1=1";
+    const bindings: string[] = [];
+    if (params?.type === "this_week") {
+      sql += " AND created_at >= date('now', 'localtime', 'weekday 0', '-6 days')";
+    } else if (params?.type === "last_week") {
+      sql += " AND created_at >= date('now', 'localtime', 'weekday 0', '-13 days') AND created_at < date('now', 'localtime', 'weekday 0', '-6 days')";
+    } else if (params?.type === "this_month") {
+      sql += " AND created_at >= date('now', 'localtime', 'start of month')";
+    } else if (params?.type === "last_month") {
+      sql += " AND created_at >= date('now', 'localtime', 'start of month', '-1 month') AND created_at < date('now', 'localtime', 'start of month')";
+    } else {
+      if (params?.startDate) { sql += " AND created_at >= ?"; bindings.push(params.startDate); }
+      if (params?.endDate) { sql += " AND created_at <= ?"; bindings.push(params.endDate + " 23:59:59"); }
+    }
+    if (params?.categories && params.categories.length > 0) {
+      sql += ` AND category IN (${params.categories.map(() => "?").join(", ")})`;
+      bindings.push(...params.categories);
+    }
+    sql += " GROUP BY category ORDER BY count DESC";
+    return db.prepare(sql).all(...bindings) as { category: string; count: number }[];
+  } finally {
+    db.close();
+  }
+}
+
 export function queryRecords(params: {
-  type?: "week" | "month";
+  type?: "this_week" | "last_week" | "this_month" | "last_month";
   startDate?: string;
   endDate?: string;
   categories?: string[];
@@ -79,10 +158,14 @@ export function queryRecords(params: {
     let sql = "SELECT * FROM qa_records WHERE 1=1";
     const bindings: string[] = [];
 
-    if (params.type === "week") {
-      sql += " AND created_at >= datetime('now', 'localtime', '-7 days')";
-    } else if (params.type === "month") {
-      sql += " AND created_at >= datetime('now', 'localtime', '-1 month')";
+    if (params.type === "this_week") {
+      sql += " AND created_at >= date('now', 'localtime', 'weekday 0', '-6 days')";
+    } else if (params.type === "last_week") {
+      sql += " AND created_at >= date('now', 'localtime', 'weekday 0', '-13 days') AND created_at < date('now', 'localtime', 'weekday 0', '-6 days')";
+    } else if (params.type === "this_month") {
+      sql += " AND created_at >= date('now', 'localtime', 'start of month')";
+    } else if (params.type === "last_month") {
+      sql += " AND created_at >= date('now', 'localtime', 'start of month', '-1 month') AND created_at < date('now', 'localtime', 'start of month')";
     } else {
       if (params.startDate) {
         sql += " AND created_at >= ?";
